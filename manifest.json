@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Network Debugger Extension",
+  "description": "Capture network events",
+  "version": "1.0",
+  "permissions": [
+    "debugger",
+    "tabs",
+    "downloads",
+    "webRequest",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {},
+  "host_permissions": ["*://*/*"]
+}
