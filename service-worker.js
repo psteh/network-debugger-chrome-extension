@@ -3,6 +3,9 @@
 
 let tabId = '';
 const body = [];
+const stringType = 'string';
+const objectType = 'object';
+const arrayType = 'array';
 
 chrome.action.onClicked.addListener(function (tab) {
   // console.log("tab", tab);
@@ -22,15 +25,22 @@ chrome.action.onClicked.addListener(function (tab) {
           console.error(chrome.runtime.lastError);
         }
       });
+      chrome.debugger.sendCommand({ tabId }, 'Runtime.enable', {}, function () {
+        console.log('Runtime enabled');
+        if (chrome.runtime.lastError) {
+          console.error(chrome.runtime.lastError);
+        }
+      });
     });
   } else {
     console.log('Debugger can only be attached to HTTP/HTTPS pages.');
   }
 });
 
-chrome.debugger.onEvent.addListener(function (source, method, params) {
+chrome.debugger.onEvent.addListener(async function (source, method, params) {
   const isXHRType = params?.type === 'XHR';
   const isLogType = method === 'Log.entryAdded';
+  const isConsoleType = method === 'Runtime.consoleAPICalled';
   const reqMethods = method === 'Network.requestWillBeSent';
   const resMethods = [
     'Network.responseReceived',
@@ -39,6 +49,8 @@ chrome.debugger.onEvent.addListener(function (source, method, params) {
 
   if (isLogType) {
     log('log', params?.entry?.url || '', params?.entry?.text);
+  } else if (isConsoleType) {
+    await getConsoleMessage(params?.args);
   } else if (isXHRType && reqMethods) {
     const request = params?.request;
     log(
@@ -112,4 +124,44 @@ const getFilename = () => {
   const milliseconds = new Date().getMilliseconds();
 
   return `${filename}${year}${month}${date}_${hours}${minutes}${seconds}_${milliseconds}${extension}`;
+};
+
+const getConsoleMessage = async args => {
+  if (!args) {
+    return;
+  }
+
+  args?.forEach(async arg => {
+    if (arg.type === stringType && arg.value) {
+      log('log', '', arg.value);
+    }
+
+    // if Array type will require to get properties
+    else if (arg.type === objectType && arg.subtype === arrayType) {
+      const properties = await chrome.debugger.sendCommand(
+        { tabId },
+        'Runtime.getProperties',
+        {
+          objectId: arg?.objectId,
+          ownProperties: true,
+          generatePreview: true
+        }
+      );
+
+      properties?.result?.forEach(property => {
+        if (property?.value?.preview?.properties) {
+          property.value.preview.properties?.forEach(previewProperty => {
+            log('log', '', { [previewProperty.name]: previewProperty?.value });
+          });
+        }
+      });
+    }
+
+    // object type can be get from the preview
+    else if (arg.type === objectType && arg?.preview?.properties) {
+      arg.preview.properties.forEach(property => {
+        log('log', '', { [property.name]: property.value });
+      });
+    }
+  });
 };
